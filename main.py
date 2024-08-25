@@ -1,4 +1,5 @@
 import logging
+import random
 import arcade
 import pymunk
 
@@ -18,6 +19,7 @@ TITLE = "Angry Birds"
 GRAVITY = -900
 
 class App(arcade.Window):
+
     def __init__(self):
         super().__init__(WIDTH, HEIGHT, TITLE)
         self.background = arcade.load_texture("assets/img/background3.png")
@@ -35,12 +37,14 @@ class App(arcade.Window):
         self.sprites = arcade.SpriteList()
         self.birds = arcade.SpriteList()
         self.world = arcade.SpriteList()
-        self.add_columns()
-        self.add_pigs()
+        self.add_columns()  # Llamada al método add_columns
+        self.add_pigs()     # Llamada al método add_pigs
+        self.add_moving_obstacles()  # Llamada al método add_moving_obstacles
+        self.add_fragile_blocks()  # Llamada al método add_fragile_blocks
 
         # Cargar imagen de la resortera y establecer posición fija
         self.sling_image = arcade.load_texture("assets/img/sling-3.png")
-        self.sling_position = (250, HEIGHT / 12)  # Ajusta la posición según sea necesario
+        self.sling_position = (250, HEIGHT / 12)
 
         self.start_point = Point2D()
         self.end_point = Point2D()
@@ -55,6 +59,37 @@ class App(arcade.Window):
         self.selected_bird_type = "red"
         self.keys_pressed = set()
 
+    def add_columns(self):
+        # Columnas de diferentes alturas y anchos
+        for x in range(WIDTH // 2, WIDTH, 300):
+            height = random.randint(100, 300)
+            column = Column(x, 50, self.space, width=60, height=height)
+            self.sprites.append(column)
+            self.world.append(column)
+        
+        # Añadir plataformas flotantes
+        for x in range(WIDTH // 2 + 150, WIDTH, 450):
+            y = random.randint(300, 500)
+            platform = Column(x, y, self.space, width=200, height=20, mass=5)
+            self.sprites.append(platform)
+            self.world.append(platform)
+
+    def add_moving_obstacles(self):
+        for x in range(WIDTH // 2, WIDTH, 400):
+            y = random.randint(100, 300)
+            moving_obstacle = Column(x, y, self.space, width=50, height=50, mass=8)
+            self.sprites.append(moving_obstacle)
+            self.world.append(moving_obstacle)
+            moving_obstacle.body.velocity = pymunk.Vec2d(random.choice([-50, 50]), 0)
+
+    def add_fragile_blocks(self):
+        for x in range(WIDTH // 2 + 100, WIDTH, 350):
+            y = random.randint(100, 200)
+            fragile_block = Column(x, y, self.space, width=100, height=50, mass=2)
+            fragile_block.shape.elasticity = 0.1  # Menos elástico, más frágil
+            self.sprites.append(fragile_block)
+            self.world.append(fragile_block)
+
     def collision_handler(self, arbiter, space, data):
         impulse_norm = arbiter.total_impulse.length
         if impulse_norm < 100:
@@ -68,12 +103,6 @@ class App(arcade.Window):
 
         return True
 
-    def add_columns(self):
-        for x in range(WIDTH // 2, WIDTH, 400):
-            column = Column(x, 50, self.space)
-            self.sprites.append(column)
-            self.world.append(column)
-
     def add_pigs(self):
         pig1 = Pig(WIDTH / 2, 100, self.space)
         self.sprites.append(pig1)
@@ -83,18 +112,14 @@ class App(arcade.Window):
         self.space.step(1 / 60.0)  # Actualiza la simulación de las físicas
         self.update_collisions()
         self.sprites.update()
-        
-        # Verificar si el pájaro Chuck está en el aire
-        for bird in self.birds:
-            if isinstance(bird, YellowBird) and bird.body.velocity.length > 0:
-                bird.increase_speed_on_click = True
-            else:
-                bird.increase_speed_on_click = False
 
-            # Verificar si el pájaro azul está en el aire
-            if isinstance(bird, BlueBird) and bird.body.velocity.length > 0:
-                if arcade.key.LEFT in self.keys_pressed:
-                    bird.split()
+        # Verificar si algún pájaro necesita ejecutar su acción especial
+        for bird in self.birds:
+            if isinstance(bird, YellowBird) and arcade.key.SPACE in self.keys_pressed:
+                bird.on_click()
+
+            if isinstance(bird, BlueBird) and arcade.key.SPACE in self.keys_pressed and not bird.has_split:
+                bird.on_click()
 
     def update_collisions(self):
         pass
@@ -106,14 +131,14 @@ class App(arcade.Window):
             self.selected_bird_type = "yellow"
         elif key == arcade.key.KEY_3:
             self.selected_bird_type = "blue"
-        
-        # Capturar teclas presionadas
-        self.keys_pressed.add(key)
+        elif key == arcade.key.SPACE:
+            # Capturar la tecla espacio
+            self.keys_pressed.add(key)
 
     def on_key_release(self, key, modifiers):
-        # Liberar teclas cuando se sueltan
-        if key in self.keys_pressed:
-            self.keys_pressed.remove(key)
+        if key == arcade.key.SPACE:
+            # Eliminar la tecla espacio del set cuando se suelta
+            self.keys_pressed.discard(key)
 
     def on_mouse_press(self, x, y, button, modifiers):
         if button == arcade.MOUSE_BUTTON_LEFT:
@@ -141,10 +166,11 @@ class App(arcade.Window):
             elif self.selected_bird_type == "yellow":
                 bird = YellowBird("assets/img/chuck.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space)
             elif self.selected_bird_type == "blue":
-                bird = BlueBird("assets/img/blue.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space)
+                bird = BlueBird("assets/img/blue.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space, self.sprites, self.birds)
             
             self.sprites.append(bird)
             self.birds.append(bird)
+            self.keys_pressed = set()  # Restablecer teclas presionadas
 
     def on_draw(self):
         arcade.start_render()

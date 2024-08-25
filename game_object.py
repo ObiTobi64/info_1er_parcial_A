@@ -111,31 +111,44 @@ class Column(arcade.Sprite):
         self.center_y = self.shape.body.position.y
 
 class YellowBird(Bird):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, impulse_multiplier=2, **kwargs):
         super().__init__(*args, **kwargs)
-        self.default_impulse_multiplier = 2
+        self.impulse_multiplier = impulse_multiplier
         self.increase_speed_on_click = False
 
     def on_click(self):
-        impulse = self.default_impulse_multiplier
-        self.body.apply_impulse_at_local_point(pymunk.Vec2d(impulse, 0))
+        # Aplica un impulso adicional en la dirección actual del pájaro
+        impulse = self.impulse_multiplier * self.body.velocity.length
+        impulse_vector = pymunk.Vec2d(impulse, 0).rotated(self.body.angle)
+        self.body.apply_impulse_at_local_point(impulse_vector)
 
     def update(self):
         super().update()
-        if self.increase_speed_on_click and self.body.velocity.x < 200:
-            self.body.velocity.x += 50
+        if self.increase_speed_on_click:
+            self.on_click()
+            self.increase_speed_on_click = False
+
 
 class BlueBird(Bird):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.num_birds = 3
-        self.angle_offset = 30
+    """
+    Blue bird class. When the space key is pressed while the bird is in flight,
+    it will split into three birds.
+    """
+    def __init__(self, image_path: str, impulse_vector: ImpulseVector, x: int, y: int, space: pymunk.Space, sprite_list: arcade.SpriteList, bird_list: arcade.SpriteList):
+        super().__init__(image_path, impulse_vector, x, y, space)
+        self.has_split = False  # Asegura que solo se divida una vez
+        self.sprite_list = sprite_list
+        self.bird_list = bird_list
 
-    def split(self):
-        for i in range(self.num_birds):
-            angle = i * self.angle_offset
-            new_bird = BlueBird("assets/img/blue.png", None, self.body.position.x, self.body.position.y, self.space)
-            new_bird.body.apply_impulse_at_local_point(pymunk.Vec2d(100, 0).rotated(math.radians(angle)))
-            self.space.add(new_bird.body, new_bird.shape)
-            self.sprites.append(new_bird)
-        self.remove_from_sprite_lists()
+    def on_click(self):
+        if not self.has_split:
+            # Crear dos nuevos pájaros
+            for angle_offset in (-30, 30):
+                angle = math.radians(angle_offset) + math.atan2(self.body.velocity.y, self.body.velocity.x)
+                new_impulse = 200 * pymunk.Vec2d(math.cos(angle), math.sin(angle))
+                new_bird = Bird("assets/img/blue.png", ImpulseVector(angle, new_impulse.length), self.body.position.x, self.body.position.y, self.space)
+                self.sprite_list.append(new_bird)
+                self.bird_list.append(new_bird)
+
+            # Establecer el estado de dividido
+            self.has_split = True

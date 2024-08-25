@@ -1,10 +1,9 @@
-import math
 import logging
 import arcade
 import pymunk
 
-from game_object import Bird, Column, Pig
-from game_logic import get_impulse_vector, Point2D, get_distance
+from game_object import Bird, Column, Pig, YellowBird, BlueBird
+from game_logic import get_impulse_vector, Point2D
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("arcade").setLevel(logging.WARNING)
@@ -15,19 +14,19 @@ logger = logging.getLogger("main")
 
 WIDTH = 1800
 HEIGHT = 800
-TITLE = "Angry birds"
+TITLE = "Angry Birds"
 GRAVITY = -900
-
 
 class App(arcade.Window):
     def __init__(self):
         super().__init__(WIDTH, HEIGHT, TITLE)
         self.background = arcade.load_texture("assets/img/background3.png")
-        # crear espacio de pymunk
+        
+        # Crear espacio de pymunk
         self.space = pymunk.Space()
         self.space.gravity = (0, GRAVITY)
 
-        # agregar piso
+        # Agregar piso
         floor_body = pymunk.Body(body_type=pymunk.Body.STATIC)
         floor_shape = pymunk.Segment(floor_body, [0, 15], [WIDTH, 15], 0.0)
         floor_shape.friction = 10
@@ -39,14 +38,22 @@ class App(arcade.Window):
         self.add_columns()
         self.add_pigs()
 
+        # Cargar imagen de la resortera y establecer posición fija
+        self.sling_image = arcade.load_texture("assets/img/sling-3.png")
+        self.sling_position = (250, HEIGHT / 12)  # Ajusta la posición según sea necesario
+
         self.start_point = Point2D()
         self.end_point = Point2D()
         self.distance = 0
         self.draw_line = False
 
-        # agregar un collision handler
+        # Agregar un collision handler
         self.handler = self.space.add_default_collision_handler()
         self.handler.post_solve = self.collision_handler
+
+        # Inicializar el tipo de pájaro seleccionado
+        self.selected_bird_type = "red"
+        self.keys_pressed = set()
 
     def collision_handler(self, arbiter, space, data):
         impulse_norm = arbiter.total_impulse.length
@@ -73,47 +80,85 @@ class App(arcade.Window):
         self.world.append(pig1)
 
     def on_update(self, delta_time: float):
-        self.space.step(1 / 60.0)  # actualiza la simulacion de las fisicas
+        self.space.step(1 / 60.0)  # Actualiza la simulación de las físicas
         self.update_collisions()
         self.sprites.update()
+        
+        # Verificar si el pájaro Chuck está en el aire
+        for bird in self.birds:
+            if isinstance(bird, YellowBird) and bird.body.velocity.length > 0:
+                bird.increase_speed_on_click = True
+            else:
+                bird.increase_speed_on_click = False
+
+            # Verificar si el pájaro azul está en el aire
+            if isinstance(bird, BlueBird) and bird.body.velocity.length > 0:
+                if arcade.key.LEFT in self.keys_pressed:
+                    bird.split()
 
     def update_collisions(self):
         pass
 
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.KEY_1:
+            self.selected_bird_type = "red"
+        elif key == arcade.key.KEY_2:
+            self.selected_bird_type = "yellow"
+        elif key == arcade.key.KEY_3:
+            self.selected_bird_type = "blue"
+        
+        # Capturar teclas presionadas
+        self.keys_pressed.add(key)
+
+    def on_key_release(self, key, modifiers):
+        # Liberar teclas cuando se sueltan
+        if key in self.keys_pressed:
+            self.keys_pressed.remove(key)
+
     def on_mouse_press(self, x, y, button, modifiers):
         if button == arcade.MOUSE_BUTTON_LEFT:
-            self.start_point = Point2D(x, y)
+            # Ajusta la posición de inicio al punto fijo de la resortera
+            self.start_point = Point2D(self.sling_position[0], self.sling_position[1])
             self.end_point = Point2D(x, y)
             self.draw_line = True
             logger.debug(f"Start Point: {self.start_point}")
 
     def on_mouse_drag(self, x: int, y: int, dx: int, dy: int, buttons: int, modifiers: int):
         if buttons == arcade.MOUSE_BUTTON_LEFT:
-            self.end_point = Point2D(x, y)
-            logger.debug(f"Dragging to: {self.end_point}")
+            self.start_point = Point2D(self.sling_position[0], self.sling_position[1])
+            self.start_point = Point2D(x, y)
+            logger.debug(f"Dragging to: {self.start_point}")
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
         if button == arcade.MOUSE_BUTTON_LEFT:
-            logger.debug(f"Releasing from: {self.end_point}")
+            logger.debug(f"Releasing from: {self.start_point}")
             self.draw_line = False
             impulse_vector = get_impulse_vector(self.start_point, self.end_point)
-            bird = Bird("assets/img/red-bird3.png", impulse_vector, x, y, self.space)
+            
+            # Crear el pájaro seleccionado
+            if self.selected_bird_type == "red":
+                bird = Bird("assets/img/red.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space)
+            elif self.selected_bird_type == "yellow":
+                bird = YellowBird("assets/img/chuck.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space)
+            elif self.selected_bird_type == "blue":
+                bird = BlueBird("assets/img/blue.png", impulse_vector, self.sling_position[0], self.sling_position[1], self.space)
+            
             self.sprites.append(bird)
             self.birds.append(bird)
 
     def on_draw(self):
         arcade.start_render()
         arcade.draw_lrwh_rectangle_textured(0, 0, WIDTH, HEIGHT, self.background)
+        # Dibujar la resortera
+        arcade.draw_texture_rectangle(self.sling_position[0], self.sling_position[1], self.sling_image.width, self.sling_image.height, self.sling_image)
         self.sprites.draw()
         if self.draw_line:
             arcade.draw_line(self.start_point.x, self.start_point.y, self.end_point.x, self.end_point.y,
-                             arcade.color.BLACK, 3)
-
+            arcade.color.BLACK, 3)
 
 def main():
     app = App()
     arcade.run()
-
 
 if __name__ == "__main__":
     main()

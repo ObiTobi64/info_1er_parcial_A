@@ -3,7 +3,6 @@ import arcade
 import pymunk
 from game_logic import ImpulseVector
 
-
 class Bird(arcade.Sprite):
     """
     Bird class. This represents an angry bird. All the physics is handled by Pymunk,
@@ -30,11 +29,11 @@ class Bird(arcade.Sprite):
         body = pymunk.Body(mass, moment)
         body.position = (x, y)
 
-        impulse = min(max_impulse, impulse_vector.impulse) * power_multiplier
-        impulse_pymunk = impulse * pymunk.Vec2d(1, 0)
-        # apply impulse
-        body.apply_impulse_at_local_point(impulse_pymunk.rotated(impulse_vector.angle))
-        # shape
+        if impulse_vector:
+            impulse = min(max_impulse, impulse_vector.impulse) * power_multiplier
+            impulse_pymunk = impulse * pymunk.Vec2d(1, 0)
+            body.apply_impulse_at_local_point(impulse_pymunk.rotated(impulse_vector.angle))
+            
         shape = pymunk.Circle(body, radius)
         shape.elasticity = elasticity
         shape.friction = friction
@@ -80,30 +79,26 @@ class Pig(arcade.Sprite):
     def update(self):
         self.center_x = self.shape.body.position.x
         self.center_y = self.shape.body.position.y
-        self.radians = self.shape.body.angle
 
 
-class PassiveObject(arcade.Sprite):
-    """
-    Passive object that can interact with other objects.
-    """
+class Column(arcade.Sprite):
     def __init__(
         self,
-        image_path: str,
         x: float,
         y: float,
         space: pymunk.Space,
-        mass: float = 2,
+        width: float = 60,
+        height: float = 200,
+        mass: float = 10,
         elasticity: float = 0.8,
-        friction: float = 1,
+        friction: float = 0.5,
         collision_layer: int = 0,
     ):
-        super().__init__(image_path, 1)
-
-        moment = pymunk.moment_for_box(mass, (self.width, self.height))
+        super().__init__("assets/img/column.png", 1)
+        moment = pymunk.moment_for_box(mass, (width, height))
         body = pymunk.Body(mass, moment)
         body.position = (x, y)
-        shape = pymunk.Poly.create_box(body, (self.width, self.height))
+        shape = pymunk.Poly.create_box(body, (width, height))
         shape.elasticity = elasticity
         shape.friction = friction
         shape.collision_type = collision_layer
@@ -114,25 +109,33 @@ class PassiveObject(arcade.Sprite):
     def update(self):
         self.center_x = self.shape.body.position.x
         self.center_y = self.shape.body.position.y
-        self.radians = self.shape.body.angle
 
+class YellowBird(Bird):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.default_impulse_multiplier = 2
+        self.increase_speed_on_click = False
 
-class Column(PassiveObject):
-    def __init__(self, x, y, space):
-        super().__init__("assets/img/column.png", x, y, space)
+    def on_click(self):
+        impulse = self.default_impulse_multiplier
+        self.body.apply_impulse_at_local_point(pymunk.Vec2d(impulse, 0))
 
+    def update(self):
+        super().update()
+        if self.increase_speed_on_click and self.body.velocity.x < 200:
+            self.body.velocity.x += 50
 
-class StaticObject(arcade.Sprite):
-    def __init__(
-            self,
-            image_path: str,
-            x: float,
-            y: float,
-            space: pymunk.Space,
-            mass: float = 2,
-            elasticity: float = 0.8,
-            friction: float = 1,
-            collision_layer: int = 0,
-    ):
-        super().__init__(image_path, 1)
+class BlueBird(Bird):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_birds = 3
+        self.angle_offset = 30
 
+    def split(self):
+        for i in range(self.num_birds):
+            angle = i * self.angle_offset
+            new_bird = BlueBird("assets/img/blue.png", None, self.body.position.x, self.body.position.y, self.space)
+            new_bird.body.apply_impulse_at_local_point(pymunk.Vec2d(100, 0).rotated(math.radians(angle)))
+            self.space.add(new_bird.body, new_bird.shape)
+            self.sprites.append(new_bird)
+        self.remove_from_sprite_lists()
